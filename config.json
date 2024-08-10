@@ -1,0 +1,6 @@
+"api": {
+    "host": "api.sandbox.paypal.com",
+    "port": "",
+    "client_id": "",
+    "client_secret": ""
+}
