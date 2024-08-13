@@ -992,6 +992,7 @@ const crypto = require('crypto');
 const sendSMS = require('../utils/smsService');
 const axios = require('axios');
 const socketManager = require("../socketManager");
+const shortMongoId = require('short-mongo-id');
 
 // Helper function to calculate total amount
 const calculateTotalAmount = (cartItems) => {
@@ -1008,6 +1009,144 @@ const generateUniqueTransactionRef = () => {
 
 
 // Controller to create an order
+// const createOrder = asyncHandler(async (req, res) => {
+//   try {
+//     const { cartItems, userDetails, paymentMethod, totalPrice } = req.body;
+
+//     if (!cartItems || !userDetails || !paymentMethod || !totalPrice) {
+//       return res.status(400).json({ message: "Invalid order data" });
+//     }
+
+//     let paymentIntent = "Cash on Delivery";
+//     let paypalOrderId = null;
+//     let mobileMoneyTransactionId = null;
+//     let paymentAuthUrl = null;
+
+//     if (paymentMethod === 'PayPal') {
+//       try {
+//         const request = new paypal.orders.OrdersCreateRequest();
+//         request.prefer("return=representation");
+//         request.requestBody({
+//           intent: 'CAPTURE',
+//           purchase_units: [{
+//             amount: {
+//               currency_code: 'USD',
+//               value: totalPrice.toString()
+//             }
+//           }]
+//         });
+
+//         const order = await paypalClient().execute(request);
+//         paypalOrderId = order.result.id;
+//         paymentIntent = "PayPal";
+//         paymentAuthUrl = `https://www.paypal.com/checkoutnow?token=${paypalOrderId}`;
+//       } catch (paypalError) {
+//         return res.status(500).json({ message: "Failed to create PayPal order", error: paypalError.toString() });
+//       }
+//     } else if (paymentMethod === 'Mobile Money') {
+//       try {
+//         const mobileMoneyResponse = await initiateMobileMoneyPayment(totalPrice, userDetails.phone);
+//         mobileMoneyTransactionId = mobileMoneyResponse.transactionId;
+//         paymentIntent = "Mobile Money";
+//         paymentAuthUrl = mobileMoneyResponse.paymentAuthUrl;
+//       } catch (mobileMoneyError) {
+//         return res.status(500).json({ message: "Failed to initiate Mobile Money payment", error: mobileMoneyError.toString() });
+//       }
+//     }
+
+//     const newOrder = new Order({
+//       products: cartItems.map((cartItem) => ({
+//         product: cartItem.item._id,
+//         count: cartItem.quantity,
+//         color: cartItem.color,
+//       })),
+//       paymentIntent,
+//       paypalOrderId,
+//       mobileMoneyTransactionId,
+//       orderby: req.user._id,
+//       userDetails: {
+//         email: userDetails.email,
+//         name: userDetails.name,
+//         address: userDetails.address,
+//         postalCode: userDetails.postalCode,
+//         city: userDetails.city,
+//         country: userDetails.country,
+//         phone: userDetails.phone,
+//       },
+//       orderStatus: 'Not Processed',
+//       totalAmount: totalPrice,
+//     });
+
+//     await newOrder.save();
+
+//     socketManager.emitNewOrder(newOrder._id, newOrder.orderStatus);
+
+//     res.status(201).json({
+//       orderId: newOrder._id,
+//       clientId: process.env.PAYPAL_CLIENT_ID,
+//       paymentIntent,
+//       paypalOrderId,
+//       mobileMoneyTransactionId,
+//       paymentAuthUrl,
+//     });
+//   } catch (error) {
+//     console.error("Detailed error:", error);
+//     res.status(500).json({ message: 'Error creating order', error: error.toString() });
+//   }
+// });
+
+
+// const updateOrderStatus = asyncHandler(async (req, res) => {
+//   const { orderId, status, dispatchedAt, expectedDeliveryAt } = req.body;
+
+//   if (!orderId) {
+//     return res.status(400).json({ message: "Order ID is required" });
+//   }
+
+//   if (!status) {
+//     return res.status(400).json({ message: "Status is required" });
+//   }
+
+//   try {
+//     const updateData = { orderStatus: status };
+
+//     if (status === 'Dispatched') {
+//       updateData.dispatchedAt = dispatchedAt || new Date();
+//       updateData.expectedDeliveryAt = expectedDeliveryAt || new Date(Date.now() + 24 * 60 * 60 * 1000);
+//     }
+
+//     const updatedOrder = await Order.findByIdAndUpdate(
+//       orderId,
+//       updateData,
+//       { new: true }
+//     );
+
+//     if (!updatedOrder) {
+//       return res.status(404).json({ message: "Order not found" });
+//     }
+
+//     const io = socketManager.getIO();
+//     io.emit("orderStatusUpdate", { 
+//       orderId: updatedOrder._id, 
+//       status: updatedOrder.orderStatus,
+//       dispatchedAt: updatedOrder.dispatchedAt,
+//       expectedDeliveryAt: updatedOrder.expectedDeliveryAt
+//     });
+
+//     res.status(200).json({ 
+//       message: "Order status updated successfully", 
+//       orderId: updatedOrder._id,
+//       status: updatedOrder.orderStatus,
+//       dispatchedAt: updatedOrder.dispatchedAt,
+//       expectedDeliveryAt: updatedOrder.expectedDeliveryAt
+//     });
+//   } catch (error) {
+//     res.status(500).json({ message: 'Error updating order status', error: error.toString() });
+//   }
+// });
+
+
+
 const createOrder = asyncHandler(async (req, res) => {
   try {
     const { cartItems, userDetails, paymentMethod, totalPrice } = req.body;
@@ -1078,7 +1217,8 @@ const createOrder = asyncHandler(async (req, res) => {
 
     await newOrder.save();
 
-    socketManager.emitNewOrder(newOrder._id, newOrder.orderStatus);
+    // Log new order creation instead of using Socket.IO
+    console.log('New order created:', newOrder._id);
 
     res.status(201).json({
       orderId: newOrder._id,
@@ -1093,7 +1233,6 @@ const createOrder = asyncHandler(async (req, res) => {
     res.status(500).json({ message: 'Error creating order', error: error.toString() });
   }
 });
-
 
 const updateOrderStatus = asyncHandler(async (req, res) => {
   const { orderId, status, dispatchedAt, expectedDeliveryAt } = req.body;
@@ -1124,9 +1263,9 @@ const updateOrderStatus = asyncHandler(async (req, res) => {
       return res.status(404).json({ message: "Order not found" });
     }
 
-    const io = socketManager.getIO();
-    io.emit("orderStatusUpdate", { 
-      orderId: updatedOrder._id, 
+    // Log order status update instead of using Socket.IO
+    console.log('Order status updated:', {
+      orderId: updatedOrder._id,
       status: updatedOrder.orderStatus,
       dispatchedAt: updatedOrder.dispatchedAt,
       expectedDeliveryAt: updatedOrder.expectedDeliveryAt
@@ -1143,6 +1282,7 @@ const updateOrderStatus = asyncHandler(async (req, res) => {
     res.status(500).json({ message: 'Error updating order status', error: error.toString() });
   }
 });
+
 
 
 // Controller to capture PayPal order
@@ -1171,32 +1311,67 @@ const captureOrder = asyncHandler(async (req, res) => {
   }
 });
 
+// const getOrders = asyncHandler(async (req, res) => {
+//   const orders = await Order.find({ orderby: req.user._id })
+//     .populate('products.product')
+//     .lean();  
+
+//   console.log("Orders being sent:", orders); 
+//   res.json({ orders });
+// });
+
+
+// // Controller to get a single order by ID
+// const getSingleOrder = asyncHandler(async (req, res) => {
+//   const orderId = req.params.id;
+
+//   if (!orderId) {
+//     return res.status(400).json({ message: "Order ID is required" });
+//   }
+
+//   try {
+//     const order = await Order.findById(orderId).populate('products.product').exec();
+
+//     if (!order) {
+//       return res.status(404).json({ message: "Order not found" });
+//     }
+
+//     res.status(200).json({ order });
+//   } catch (error) {
+//     res.status(500).json({ message: 'Error fetching order', error: error.toString() });
+//   }
+// });
+
 const getOrders = asyncHandler(async (req, res) => {
   const orders = await Order.find({ orderby: req.user._id })
     .populate('products.product')
     .lean();  
 
-  console.log("Orders being sent:", orders); 
-  res.json({ orders });
+  const ordersWithShortId = orders.map(order => ({
+    ...order,
+    shortId: shortMongoId(order._id)
+  }));
+
+  console.log("Orders being sent:", ordersWithShortId); 
+  res.json({ orders: ordersWithShortId });
 });
 
-
-// Controller to get a single order by ID
 const getSingleOrder = asyncHandler(async (req, res) => {
-  const orderId = req.params.id;
+  const shortId = req.params.id;
 
-  if (!orderId) {
+  if (!shortId) {
     return res.status(400).json({ message: "Order ID is required" });
   }
 
   try {
-    const order = await Order.findById(orderId).populate('products.product').exec();
+    const orders = await Order.find().populate('products.product').lean();
+    const order = orders.find(o => shortMongoId(o._id) === shortId);
 
     if (!order) {
       return res.status(404).json({ message: "Order not found" });
     }
 
-    res.status(200).json({ order });
+    res.status(200).json({ order: { ...order, shortId } });
   } catch (error) {
     res.status(500).json({ message: 'Error fetching order', error: error.toString() });
   }
